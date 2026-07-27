@@ -2,6 +2,7 @@ const CACHE_NAME = 'food-counter-cache-v1';
 const ASSETS = [
   './',
   './index.html',
+  './admin.html',
   './manifest.json',
   './icon-192.png',
   './icon-512.png'
