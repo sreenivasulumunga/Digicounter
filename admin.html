@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — Subscription Approvals</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+  window.FIREBASE_CONFIG = {
+    apiKey: "AIzaSyCamjSFod5ocv24QHAjt4cyWNIwFkXf_5I",
+    authDomain: "digicounter-3577c.firebaseapp.com",
+    projectId: "digicounter-3577c",
+    storageBucket: "digicounter-3577c.firebasestorage.app",
+    messagingSenderId: "185412218372",
+    appId: "1:185412218372:web:428d0ea8083ec558f00f51",
+    measurementId: "G-HC56Z988LG"
+  };
+  window.ADMIN_EMAIL = "sreenivasulumunga@gmail.com";
+</script>
+<style>
+  :root{ --ink:#12181b; --paper:#f6f4ee; --line:#d8d3c4; --accent:#c1531f; --good:#1f6f5c; --warn:#b3492e; }
+  *{box-sizing:border-box;}
+  body{ margin:0; background:var(--paper); color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; padding:20px 16px 60px; }
+  h1{ font-size:20px; margin:0 0 4px; font-weight:800; }
+  .sub{ font-size:13px; color:#5b6663; margin:0 0 18px; }
+  .btn{ appearance:none; border:none; border-radius:10px; padding:11px 18px; font-size:14px; font-weight:700; cursor:pointer; font-family:inherit; }
+  .btn-good{ background:var(--good); color:#fff; }
+  .btn-warn{ background:var(--warn); color:#fff; }
+  .btn-ghost{ background:transparent; border:1px solid var(--line); color:var(--ink); }
+  .google-btn{ display:flex; align-items:center; gap:10px; background:#fff; border:1px solid #dadce0; border-radius:10px; padding:11px 22px; font-size:15px; font-weight:600; cursor:pointer; }
+  .center{ display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:60vh; text-align:center; }
+  .card{ border:1px solid var(--line); border-radius:12px; background:#fff; padding:16px; margin-bottom:12px; }
+  .row{ display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+  .name{ font-weight:800; font-size:15px; }
+  .meta{ font-size:13px; color:#5b6663; margin-top:4px; }
+  .empty{ text-align:center; padding:40px 20px; color:#8a8272; }
+  .hidden{ display:none !important; }
+</style>
+</head>
+<body>
+
+<div class="center" id="signInScreen">
+  <h1>🔐 Admin — Subscription Approvals</h1>
+  <p class="sub">Sign in with your admin Google account.</p>
+  <button class="google-btn" id="signInBtn">Sign in with Google</button>
+</div>
+
+<div class="hidden" id="deniedScreen">
+  <div class="center">
+    <h1>Access denied</h1>
+    <p class="sub">This account isn't authorized to view the admin page.</p>
+    <button class="btn btn-ghost" id="signOutBtn2">Sign out</button>
+  </div>
+</div>
+
+<div class="hidden" id="adminScreen">
+  <h1>🔐 Subscription Approvals</h1>
+  <p class="sub" id="pendingCountText">Loading…</p>
+  <div id="requestsList"></div>
+  <button class="btn btn-ghost" id="signOutBtn" style="margin-top:16px;">Sign out</button>
+</div>
+
+<script>
+(function(){
+  firebase.initializeApp(window.FIREBASE_CONFIG);
+  const auth = firebase.auth();
+  const db = firebase.firestore();
+
+  const $ = id => document.getElementById(id);
+  let unsub = null;
+
+  $('signInBtn').addEventListener('click', () => {
+    auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+  });
+  $('signOutBtn').addEventListener('click', () => auth.signOut());
+  $('signOutBtn2').addEventListener('click', () => auth.signOut());
+
+  function show(id){
+    ['signInScreen','deniedScreen','adminScreen'].forEach(x => $(x).classList.toggle('hidden', x !== id));
+  }
+
+  auth.onAuthStateChanged(user => {
+    if (unsub){ unsub(); unsub = null; }
+    if (!user){ show('signInScreen'); return; }
+    if (user.email !== window.ADMIN_EMAIL){ show('deniedScreen'); return; }
+    show('adminScreen');
+    unsub = db.collection('users').where('status', '==', 'pending').onSnapshot(snap => {
+      renderList(snap.docs);
+    }, err => {
+      $('pendingCountText').textContent = 'Error loading requests: ' + err.message;
+    });
+  });
+
+  function money(n){ return '₹' + Number(n||0).toLocaleString('en-IN'); }
+
+  function renderList(docs){
+    const list = $('requestsList');
+    $('pendingCountText').textContent = docs.length + ' pending request' + (docs.length===1?'':'s');
+    list.innerHTML = '';
+    if (docs.length === 0){
+      list.innerHTML = '<div class="empty">No pending requests right now.</div>';
+      return;
+    }
+    docs.forEach(d => {
+      const data = d.data();
+      const requestedAt = data.requestedAt && data.requestedAt.toDate ? data.requestedAt.toDate().toLocaleString() : '—';
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML = `
+        <div class="row">
+          <div>
+            <div class="name">${escapeHtml(data.name || data.email || 'Unknown')}</div>
+            <div class="meta">${escapeHtml(data.email||'')}</div>
+            <div class="meta">Plan: <b>${escapeHtml(data.plan||'—')}</b> · Amount: <b>${money(data.amount)}</b></div>
+            <div class="meta">Requested: ${requestedAt}</div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-good" data-action="approve">✅ Approve</button>
+            <button class="btn btn-warn" data-action="reject">✕ Reject</button>
+          </div>
+        </div>
+      `;
+      card.querySelector('[data-action="approve"]').addEventListener('click', () => approve(d.id, data));
+      card.querySelector('[data-action="reject"]').addEventListener('click', () => reject(d.id));
+      list.appendChild(card);
+    });
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+
+  function approve(uid, data){
+    const days = data.planDays || 30;
+    const expiry = new Date(Date.now() + days * 86400000);
+    db.collection('users').doc(uid).set({
+      status: 'active',
+      expiryDate: firebase.firestore.Timestamp.fromDate(expiry),
+      approvedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true }).catch(err => alert('Failed: ' + err.message));
+  }
+  function reject(uid){
+    if (!confirm('Reject this request? The user will need to submit a new payment request.')) return;
+    db.collection('users').doc(uid).set({ status: 'none' }, { merge: true }).catch(err => alert('Failed: ' + err.message));
+  }
+})();
+</script>
+
+</body>
+</html>
